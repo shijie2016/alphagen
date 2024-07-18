@@ -88,6 +88,9 @@ python train_maskable_ppo.py --seed=SEED --pool=POOL_CAPACITY --code=INSTRUMENTS
 
 Where `SEED` is random seed, e.g., `1` or `1,2`, `POOL_CAPACITY` is the size of combination model and, `NUM_STEPS` is the limit of RL steps.
 
+Capacity is recommended to 200
+Num_steps: 30k per 24h
+Instruments: all.txt
 ### After running
 
 - Model checkpoints and alpha pools are located in `save_path`;
