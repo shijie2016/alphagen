@@ -143,12 +143,25 @@ class QlibBacktest:
 
 
 if __name__ == "__main__":
-    qlib_backtest = QlibBacktest()
+    from alphagen_qlib.utils import load_alpha_pool_by_path, load_recent_data
+    from alphagen_qlib.calculator import QLibStockDataCalculator
 
-    data = StockData(instrument='csi300',
-                     start_time='2020-01-01',
-                     end_time='2021-12-31')
+    qlib_backtest = QlibBacktest(benchmark='sh000300', top_k=50, n_drop=50)
+
+    data = StockData(instrument='all',
+                     start_time='2021-01-01',
+                     end_time='2022-12-31')
+    POOL_PATH = 'out/checkpoints/new_csi300_filtered_200_666_20240722135956/22528_steps_pool.json'
+    # POOL_PATH = 'out/checkpoints/new_csi300_filtered_20_66_20240719145701/43008_steps_pool.json'
+    # POOL_PATH = 'out/checkpoints/new_csi300_filtered_50_666_20240719134812/65536_steps_pool.json'
+    exprs, weights = load_alpha_pool_by_path(POOL_PATH)
+    calculator = QLibStockDataCalculator(data=data, target=None)
+    ensemble_alpha = calculator.make_ensemble_alpha(exprs, weights)
     expr = Mul(EMA(Sub(Delta(Mul(Log(open_),Constant(-30.0)),50),Constant(-0.01)),40),Mul(Div(Abs(EMA(low,50)),close),Constant(0.01)))
     data_df = data.make_dataframe(expr.evaluate(data))
+    # data_df = data.make_dataframe(ensemble_alpha)
 
-    qlib_backtest.run(data_df)
+    out = qlib_backtest.run(data_df, return_report=True)
+    from qlib.contrib.report import analysis_model, analysis_position
+    fig = analysis_position.report_graph(out, show_notebook=False)
+    fig[0].show(renderer='browser')

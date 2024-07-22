@@ -12,7 +12,7 @@ from alphagen.data.calculator import AlphaCalculator
 from alphagen.data.expression import *
 from alphagen.models.alpha_pool import AlphaPool, AlphaPoolBase
 from alphagen.rl.env.wrapper import AlphaEnv
-from alphagen.rl.policy import LSTMSharedNet
+from alphagen.rl.policy import LSTMSharedNet, TransformerSharedNet
 from alphagen.utils.random import reseed_everything
 from alphagen.rl.env.core import AlphaEnvCore
 from alphagen_qlib.calculator import QLibStockDataCalculator
@@ -58,6 +58,9 @@ class CustomCallback(BaseCallback):
         ic_test, rank_ic_test = self.pool.test_ensemble(self.test_calculator)
         self.logger.record('test/ic', ic_test)
         self.logger.record('test/rank_ic', rank_ic_test)
+        ic_valid, rank_ic_valid = self.pool.test_ensemble(self.valid_calculator)
+        self.logger.record('valid/ic', ic_valid)
+        self.logger.record('valid/rank_ic', rank_ic_valid)
         self.save_checkpoint()
 
     def save_checkpoint(self):
@@ -129,7 +132,7 @@ def main(
     checkpoint_callback = CustomCallback(
         save_freq=10000,
         show_freq=10000,
-        save_path='/path/for/checkpoints',
+        save_path='out/checkpoints',
         valid_calculator=calculator_valid,
         test_calculator=calculator_test,
         name_prefix=name_prefix,
@@ -141,18 +144,21 @@ def main(
         'MlpPolicy',
         env,
         policy_kwargs=dict(
-            features_extractor_class=LSTMSharedNet,
+            features_extractor_class=TransformerSharedNet,
             features_extractor_kwargs=dict(
-                n_layers=2,
+                n_encoder_layers=6,
                 d_model=128,
+                n_head=4,
+                d_ffn=256,
                 dropout=0.1,
                 device=device,
             ),
         ),
         gamma=1.,
-        ent_coef=0.01,
-        batch_size=128,
-        tensorboard_log='/path/for/tb/log',
+        learning_rate=0.001,
+        ent_coef=0.1,
+        batch_size=256,
+        tensorboard_log='out/log',
         device=device,
         verbose=1,
     )
