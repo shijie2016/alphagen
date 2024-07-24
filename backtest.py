@@ -84,7 +84,7 @@ class QlibBacktest:
                     K=self._top_k,
                     n_swap=self._n_drop,
                     signal=prediction,
-                    min_hold_days=1,
+                    min_hold_days=5,
                     only_tradable=True,
                 )
                 executor=exec.SimulatorExecutor(
@@ -142,24 +142,79 @@ class QlibBacktest:
         )
 
 
+def check_prediction():
+    global fig, mean, std
+    import matplotlib.pyplot as plt
+    # # 筛选特定资产的信号数据
+    # specific_instrument_data = data_df.xs('SH600006', level='instrument')
+    # specific_instrument_data.plot()
+    # 如果信号数据有多列，可以选择一个代表列或多列进行绘制
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+    import numpy as np
+    # 创建一个新的图和一个3D子图
+    fig = plt.figure(figsize=(14, 10))
+    ax = fig.add_subplot(111, projection='3d')
+    # 将多级索引转换为普通列
+    data_flat = data_df.reset_index()
+    # 为每个资产和日期生成数值索引
+    data_flat['date_idx'] = data_flat['datetime'].factorize()[0]
+    data_flat['instrument_idx'] = data_flat['instrument'].factorize()[0]
+    # 绘制三维散点图
+    ax.scatter(data_flat['date_idx'], data_flat['instrument_idx'], data_flat.iloc[:, 2], c=data_flat.iloc[:, 2],
+               cmap='viridis')
+    # 设置标签
+    ax.set_xlabel('Date Index')
+    ax.set_ylabel('Instrument Index')
+    ax.set_zlabel('Signal Value')
+    # 自定义x轴和y轴的标签显示真实日期和资产名称
+    ax.set_xticks(data_flat['date_idx'].unique())
+    ax.set_xticklabels(data_flat['datetime'].unique(), rotation=45, ha='right')
+    ax.set_yticks(data_flat['instrument_idx'].unique())
+    ax.set_yticklabels(data_flat['instrument'].unique())
+    plt.title('3D View of Asset Signals Over Time')
+    plt.show()
+    # %% dingwei 尖峰
+    data_flat.rename(columns={data_flat.columns[2]: 'signal'}, inplace=True)
+    # 假设你已经有了一个名为 'signal' 的列
+    mean = data_flat['signal'].mean()
+    std = data_flat['signal'].std()
+    # 定位尖峰，这里使用平均值加三倍标准差作为阈值
+    spikes = data_flat[data_flat['signal'] > mean + 5 * std]
+    print(spikes)
+    import matplotlib.pyplot as plt
+    plt.figure(figsize=(14, 6))
+    plt.plot(data_flat['datetime'], data_flat['signal'], label='Signal')
+    plt.scatter(spikes['datetime'], spikes['signal'], color='red', label='Spikes')  # 假设尖峰数据已经被找到并存入spikes
+    plt.legend()
+    plt.title('Signal with Spikes Highlighted')
+    plt.xlabel('Date')
+    plt.ylabel('Signal Value')
+    plt.grid(True)
+    plt.show()
+
+
 if __name__ == "__main__":
     from alphagen_qlib.utils import load_alpha_pool_by_path, load_recent_data
     from alphagen_qlib.calculator import QLibStockDataCalculator
 
-    qlib_backtest = QlibBacktest(benchmark='sh000300', top_k=50, n_drop=50)
+    qlib_backtest = QlibBacktest(benchmark='sh000300', top_k=10, n_drop=2)
 
-    data = StockData(instrument='all',
-                     start_time='2021-01-01',
-                     end_time='2022-12-31')
-    POOL_PATH = 'out/checkpoints/new_csi300_filtered_200_666_20240722135956/22528_steps_pool.json'
+    data = StockData(instrument='csi300_filtered',
+                     start_time='2022-01-01',
+                     end_time='2023-12-31')
+    POOL_PATH = 'out/checkpoints/new_csi300_filtered_200_666_20240722135956/20480_steps_pool.json'
     # POOL_PATH = 'out/checkpoints/new_csi300_filtered_20_66_20240719145701/43008_steps_pool.json'
     # POOL_PATH = 'out/checkpoints/new_csi300_filtered_50_666_20240719134812/65536_steps_pool.json'
     exprs, weights = load_alpha_pool_by_path(POOL_PATH)
     calculator = QLibStockDataCalculator(data=data, target=None)
     ensemble_alpha = calculator.make_ensemble_alpha(exprs, weights)
-    expr = Mul(EMA(Sub(Delta(Mul(Log(open_),Constant(-30.0)),50),Constant(-0.01)),40),Mul(Div(Abs(EMA(low,50)),close),Constant(0.01)))
-    data_df = data.make_dataframe(expr.evaluate(data))
-    # data_df = data.make_dataframe(ensemble_alpha)
+    # expr = Mul(EMA(Sub(Delta(Mul(Log(open_),Constant(-30.0)),50),Constant(-0.01)),40),Mul(Div(Abs(EMA(low,50)),close),Constant(0.01)))
+    # expr = EMA(low,50)
+    # data_df = data.make_dataframe(expr.evaluate(data))
+    import numpy as np
+    data_df = data.make_dataframe(ensemble_alpha)
+    # check_prediction()
 
     out = qlib_backtest.run(data_df, return_report=True)
     from qlib.contrib.report import analysis_model, analysis_position

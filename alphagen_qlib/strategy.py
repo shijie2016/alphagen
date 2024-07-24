@@ -24,50 +24,38 @@ class TopKSwapNStrategy(BaseSignalStrategy, Strategy):
         self.min_hold_days = min_hold_days
         self.only_tradable = only_tradable
 
-    def step_decision(self,
-                      status_df: pd.DataFrame,
-                      position_df: Optional[pd.DataFrame] = None
-                     ) -> Tuple[List[StockCode], List[StockCode]]:
+    def step_decision(self, status_df: pd.DataFrame, position_df: Optional[pd.DataFrame] = None):
         signal = dict(zip(status_df['code'], status_df['signal']))
-        unbuyable = set(record['code'] for record in status_df.to_dict('records') if not record['buyable'])
-        unsellable = set(record['code'] for record in status_df.to_dict('records') if not record['sellable'])
+        unbuyable = {record['code'] for record in status_df.to_dict('records') if not record['buyable']}
+        unsellable = {record['code'] for record in status_df.to_dict('records') if not record['sellable']}
 
         if position_df is None:
-            days_holded = dict()
+            days_holded = {}
         else:
             days_holded = dict(zip(position_df['code'], position_df['days_holded']))
 
-        all_valid_stocks = set(k for k, v in signal.items() if not isnan(v))
-        all_holding_stocks = days_holded.keys()
+        all_valid_stocks = {k for k, v in signal.items() if not isnan(v)}
+        all_holding_stocks = set(days_holded.keys())
         valid_holding_stocks = all_holding_stocks & all_valid_stocks
 
         n_to_open = self.K - len(days_holded)
         not_holding_stocks = all_valid_stocks - valid_holding_stocks
 
-        to_buy, to_sell, to_open = [], [], []
+        # Sorting for selection
+        sorted_holding_stocks = sorted(valid_holding_stocks, key=lambda x: signal[x], reverse=False)
+        sorted_not_holding_stocks = sorted(not_holding_stocks, key=lambda x: signal[x], reverse=True)
 
-        holding_priority = [] # All sellable stocks in descending order
-        for stock_id in sorted(valid_holding_stocks, key=signal.get, reverse=True):
-            if stock_id in unsellable:
-                continue
-            if days_holded[stock_id] < self.min_hold_days:
-                continue
-            holding_priority.append(stock_id)
+        to_buy = []
+        to_sell = []
 
-        for stock_id in sorted(not_holding_stocks, key=signal.get, reverse=True):
-            if stock_id in unbuyable:
-                continue
+        # Identify stocks to sell from holdings if they meet the conditions
+        to_sell = [stock for stock in sorted_holding_stocks if
+                   stock not in unsellable and days_holded[stock] >= self.min_hold_days][:self.n_swap]
 
-            can_swap = len(to_buy) >= self.n_swap and holding_priority and signal[stock_id] > signal[holding_priority[-1]]
-            if can_swap:
-                to_sell.append(holding_priority.pop())
-                to_buy.append(stock_id)
-            elif len(to_open) < n_to_open:
-                to_open.append(stock_id)
-            else:
-                break
+        # Identify stocks to buy
+        to_buy = [stock for stock in sorted_not_holding_stocks if stock not in unbuyable][:self.n_swap]
 
-        return to_buy + to_open, to_sell
+        return to_buy, to_sell
 
     def generate_trade_decision(self, execute_result=None):
         trade_step = self.trade_calendar.get_trade_step()
